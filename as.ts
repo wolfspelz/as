@@ -1,129 +1,154 @@
-﻿interface As
-{
-    Bool(val: any, alt?: boolean): boolean;
-    String(val: any, alt?: string): string;
-    Int(val: any, alt?: number): number;
-    Float(val: any, alt?: number): number;
-    Html(val: any, alt?: string): string;
-    HtmlLink(val: any, text?: string, urlFilter?: (s: string) => string, alt?: string): string;
-    Object(val: any, alt?: string): any;
-}
+import { is } from './is';
 
-var as: As = (function ()
+export class as
 {
-    var escapeHtml_entityMap = {
+    private static readonly escapeHtml_entityMap = {
         '&': '&amp;',
         '<': '&lt;',
         '>': '&gt;',
-        "'": '&quot;',
-        '"': '&#39;',
+        '\'': '&#39;',
+        '"': '&quot;',
+        '\n': '<br/>',
     };
 
-    var typeString = 'string';
-    var typeBoolean = 'boolean';
-    var typeNumber = 'number';
-
-    return {
-        Bool: function (val, alt = false): boolean
-        {
-            var res = alt;
-            if (typeof val === typeBoolean) {
+    static Bool(val: unknown, alt?: boolean): boolean
+    {
+        let res = alt ?? false;
+        try {
+            if (is.boolean(val)) {
                 res = val;
             } else {
-                if (typeof val === typeString) {
-                    if (val == 'true' || val == 'True' || val == 'TRUE' || val == '1' || val == 'yes') { res = true; }
+                if (is.string(val)) {
+                    res = val === 'true' || val === 'True' || val === 'TRUE'
+                        || val === '1' || val === 'yes';
                 } else {
-                    if (typeof val === typeNumber) {
-                        if (val == 1) { res = true; }
+                    if (is.number(val)) {
+                        res = val >= 1;
                     }
                 }
             }
-            return res;
-        },
+        } catch (error) {
+            // alt
+        }
+        return res;
+    }
 
-        String: function (val, alt = ''): string
-        {
-            var res = alt;
-            if (typeof val === typeString) {
+    static String(val: unknown, alt?: string): string
+    {
+        let res = alt ?? '';
+        try {
+            if (is.string(val)) {
                 res = val;
             } else {
-                if (typeof val === typeNumber) {
+                if (is.number(val)) {
                     res = '' + val;
                 } else {
-                    if (typeof val === typeBoolean) {
+                    if (is.boolean(val)) {
                         res = val ? 'true' : 'false';
                     }
                 }
             }
-            return res;
-        },
+        } catch (error) {
+            // alt
+        }
+        return res;
+    }
 
-        Int: function (val, alt = 0): number
-        {
-            var res = alt;
-            if (typeof val === typeNumber) {
+    static Int(val: unknown, alt?: number): number
+    {
+        let res = alt ?? 0;
+        try {
+            if (is.number(val)) {
                 res = Math.round(val);
             } else {
-                if (typeof val === typeString) {
+                if (is.string(val)) {
                     res = parseInt(val);
                     if (isNaN(res)) {
-                        res = alt;
+                        res = alt ?? 0;
                     }
                 }
             }
-            return res;
-        },
+        } catch (error) {
+            // alt
+        }
+        return res;
+    }
 
-        Float: function (val, alt = 0.0): number
-        {
-            var res = alt;
-            if (typeof val === typeNumber) {
+    static Float(val: unknown, alt?: number): number
+    {
+        let res = alt ?? 0.0;
+        try {
+            if (is.number(val)) {
                 res = val;
             } else {
-                if (typeof val === typeString) {
+                if (is.string(val)) {
                     res = parseFloat(val);
                     if (isNaN(res)) {
-                        res = alt;
+                        res = alt ?? 0;
                     }
                 }
             }
-            return res;
-        },
-
-        Html: function (val, alt = ''): string
-        {
-            var res = as.String(val, alt);
-            return String(res).replace(/[&<>'"]/g, (s) => escapeHtml_entityMap[s]);
-        },
-
-        HtmlLink: function (val, text = '', urlFilter: (s: string) => string = null, alt = ''): string
-        {
-            var res = as.String(val, alt);
-            if (urlFilter == null) {
-                urlFilter = (s => s.substr(0, 4) == 'http' ? s : '');
-            }
-            var url = urlFilter(res);
-            if (as.String(url) != '') {
-                if (text == '') {
-                    text = url;
-                }
-                res = '<a href="' + as.Html(url) + '">' + as.Html(text) + '</a>'
-            }
-            return res;
-        },
-
-        Object: function (val, alt = ''): any
-        {
-            var res = as.String(val, alt);
-            var obj = null;
-            try {
-                obj = JSON.parse(res);
-            } catch (exception) {
-                obj = JSON.parse(alt);
-            }
-            return obj;
-        },
-
-        _last: 0
+        } catch (error) {
+            // alt
+        }
+        return res;
     }
-})();
+
+    static Html(val: unknown, alt?: string): string
+    {
+        const res = as.String(val, alt);
+        const htmlEncoded = String(res).replace(/[&<>'"\n]/g, (s) => this.escapeHtml_entityMap[s]);
+        return htmlEncoded;
+    }
+
+    static HtmlWithClickableLinks(val: unknown, alt?: string): string
+    {
+        const html = as.Html(val, alt);
+        const clickableEncoded = as.makeLinksClickable(html);
+        return clickableEncoded;
+    }
+
+    static makeLinksClickable(text): string
+    {
+        const urlRegex = /(https?:\/\/[^\s]+|www\.[^. ]+\.[^ ]+|[^. ]+\.(com|org|net|[a-z]{2}))/g;
+        return text.replace(urlRegex, url =>
+        {
+            let navigateUrl = url;
+            if (navigateUrl.startsWith('http://') || navigateUrl.startsWith('https://')) {
+                //
+            } else {
+                navigateUrl = 'http://' + url;
+            }
+            return '<a href="' + navigateUrl + '" target="_blank">' + url + '</a>';
+        });
+    }
+
+    static HtmlLink(val: unknown, text?: string, urlFilter?: (s: string) => string, alt?: string): string
+    {
+        let res = as.String(val, alt);
+        if (urlFilter == null) {
+            urlFilter = (s => s.substr(0, 4) === 'http' ? s : '');
+        }
+        const url = urlFilter(res);
+        if (as.String(url) !== '') {
+            text = text ?? '';
+            if (text === '') {
+                text = url;
+            }
+            res = '<a href="' + as.Html(url) + '">' + as.Html(text) + '</a>'
+        }
+        return res;
+    }
+
+    // static Object(val: any, alt?: any): any
+    // {
+    //     var res = alt ?? {};
+    //     var obj = as.String(val, '{}');
+    //     try {
+    //         res = JSON.parse(obj);
+    //     } catch (exception) {
+    //         //
+    //     }
+    //     return obj;
+    // }
+}
